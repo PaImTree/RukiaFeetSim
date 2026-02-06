@@ -1,57 +1,88 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-[RequireComponent(typeof(Collider2D))]
+[RequireComponent(typeof(Rigidbody2D), typeof(Collider2D))]
 public class TileMovement : MonoBehaviour
 {
     [Header("Movement Settings")]
-    public float tileSize = 1f;        // Size of one tile in units
-    public float moveDelay = 0.2f;     // Delay between moves
-    public LayerMask obstacleLayer;    // Layer for walls/obstacles
+    public float tileSize = 1f;
+    public float moveDelay = 0.2f;
+    public float moveSpeed = 10f;
+    public LayerMask obstacleLayer;
 
-    private float moveTimer = 0f;
-    private Collider2D playerCollider;
+    private Rigidbody2D rb;
+    private Collider2D col;
 
-    private void Start()
+    private Vector2 targetPosition;
+    private float moveTimer;
+
+    void Awake()
     {
-        playerCollider = GetComponent<Collider2D>();
-
-        // Snap player to the tile grid on start
-        Vector3 pos = transform.position;
-        transform.position = new Vector3(Mathf.Round(pos.x), Mathf.Round(pos.y), pos.z);
+        rb = GetComponent<Rigidbody2D>();
+        col = GetComponent<Collider2D>();
     }
 
-    private void Update()
+    void Start()
+    {
+        // Snap to grid
+        Vector2 startPos = rb.position;
+        startPos.x = Mathf.Round(startPos.x);
+        startPos.y = Mathf.Round(startPos.y);
+        rb.position = startPos;
+
+        targetPosition = rb.position;
+    }
+
+    void Update()
     {
         moveTimer -= Time.deltaTime;
 
-        if (moveTimer > 0f)
+        // Still moving or waiting
+        if (moveTimer > 0f || Vector2.Distance(rb.position, targetPosition) > 0.01f)
             return;
 
-        Vector3 move = Vector3.zero;
+        Vector2 inputDir = Vector2.zero;
         var keyboard = Keyboard.current;
 
-        // Only allow one axis at a time (no diagonal movement)
         if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed)
-            move = Vector3.up;
+            inputDir = Vector2.up;
         else if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed)
-            move = Vector3.down;
+            inputDir = Vector2.down;
         else if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed)
-            move = Vector3.left;
+            inputDir = Vector2.left;
         else if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed)
-            move = Vector3.right;
+            inputDir = Vector2.right;
 
-        if (move != Vector3.zero)
+        if (inputDir != Vector2.zero)
         {
-            Vector3 targetPos = transform.position + move * tileSize;
+            Vector2 proposedTarget = rb.position + inputDir * tileSize;
 
-            // Check collision using BoxCast for exact player collider size
-            if (!Physics2D.BoxCast(targetPos, playerCollider.bounds.size, 0f, Vector2.zero, 0f, obstacleLayer))
+            // Cast FROM current position TOWARD target
+            RaycastHit2D hit = Physics2D.BoxCast(
+                rb.position,
+                col.bounds.size,
+                0f,
+                inputDir,
+                tileSize,
+                obstacleLayer
+            );
+
+            if (!hit)
             {
-                transform.position = targetPos; // Move player
+                targetPosition = proposedTarget;
+                moveTimer = moveDelay;
             }
-
-            moveTimer = moveDelay; // Reset timer
         }
+    }
+
+    void FixedUpdate()
+    {
+        rb.MovePosition(
+            Vector2.MoveTowards(
+                rb.position,
+                targetPosition,
+                moveSpeed * Time.fixedDeltaTime
+            )
+        );
     }
 }
