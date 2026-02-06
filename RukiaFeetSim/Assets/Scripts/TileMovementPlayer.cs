@@ -2,87 +2,68 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 [RequireComponent(typeof(Rigidbody2D), typeof(Collider2D))]
-public class TileMovement : MonoBehaviour
+public class TopDownMovement4Dir : MonoBehaviour
 {
-    [Header("Movement Settings")]
-    public float tileSize = 1f;
-    public float moveDelay = 0.2f;
-    public float moveSpeed = 10f;
+    public float moveSpeed = 5f;
     public LayerMask obstacleLayer;
+    public float castDistance = 0.05f;
 
     private Rigidbody2D rb;
     private Collider2D col;
-
-    private Vector2 targetPosition;
-    private float moveTimer;
+    private Vector2 movementInput;
 
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
         col = GetComponent<Collider2D>();
-    }
 
-    void Start()
-    {
-        // Snap to grid
-        Vector2 startPos = rb.position;
-        startPos.x = Mathf.Round(startPos.x);
-        startPos.y = Mathf.Round(startPos.y);
-        rb.position = startPos;
-
-        targetPosition = rb.position;
+        rb.gravityScale = 0f;
+        rb.freezeRotation = true;
+        rb.collisionDetectionMode = CollisionDetectionMode2D.Discrete;
+        rb.interpolation = RigidbodyInterpolation2D.Interpolate;
     }
 
     void Update()
     {
-        moveTimer -= Time.deltaTime;
+        float h =
+            (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed ? 1f : 0f) -
+            (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed ? 1f : 0f);
 
-        // Still moving or waiting
-        if (moveTimer > 0f || Vector2.Distance(rb.position, targetPosition) > 0.01f)
-            return;
+        float v =
+            (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed ? 1f : 0f) -
+            (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed ? 1f : 0f);
 
-        Vector2 inputDir = Vector2.zero;
-        var keyboard = Keyboard.current;
-
-        if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed)
-            inputDir = Vector2.up;
-        else if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed)
-            inputDir = Vector2.down;
-        else if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed)
-            inputDir = Vector2.left;
-        else if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed)
-            inputDir = Vector2.right;
-
-        if (inputDir != Vector2.zero)
-        {
-            Vector2 proposedTarget = rb.position + inputDir * tileSize;
-
-            // Cast FROM current position TOWARD target
-            RaycastHit2D hit = Physics2D.BoxCast(
-                rb.position,
-                col.bounds.size,
-                0f,
-                inputDir,
-                tileSize,
-                obstacleLayer
-            );
-
-            if (!hit)
-            {
-                targetPosition = proposedTarget;
-                moveTimer = moveDelay;
-            }
-        }
+        // Lock to 4 directions
+        if (Mathf.Abs(h) > Mathf.Abs(v))
+            movementInput = new Vector2(Mathf.Sign(h), 0f);
+        else if (Mathf.Abs(v) > 0f)
+            movementInput = new Vector2(0f, Mathf.Sign(v));
+        else
+            movementInput = Vector2.zero;
     }
 
     void FixedUpdate()
     {
-        rb.MovePosition(
-            Vector2.MoveTowards(
+        Vector2 desiredVelocity = movementInput * moveSpeed;
+
+        if (movementInput != Vector2.zero)
+        {
+            // Check if movement direction is blocked
+            RaycastHit2D hit = Physics2D.BoxCast(
                 rb.position,
-                targetPosition,
-                moveSpeed * Time.fixedDeltaTime
-            )
-        );
+                col.bounds.size,
+                0f,
+                movementInput,
+                castDistance,
+                obstacleLayer
+            );
+
+            if (hit)
+            {
+                desiredVelocity = Vector2.zero;
+            }
+        }
+
+        rb.linearVelocity = desiredVelocity;
     }
 }
